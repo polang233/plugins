@@ -204,12 +204,18 @@ If you added ModelScope to magpie earlier for chat, its key is already in
 `providers.json`. The bundled CLI logs the same token into the plugin:
 
 ```bash
-npx magpie-plugin-msmoli --status      # see both sides, change nothing
+npx magpie-plugin-msmoli --status      # see both sides, change nothing; exits 0 when they already agree, 1 when a login is pending
 npx magpie-plugin-msmoli --to-plugin   # copy the preset's key into the plugin
 ```
 
-From a GitHub install, run magpie's own copy instead:
-`node ~/.config/magpie/plugins/node_modules/magpie-plugin-msmoli/bin/sync.mjs`.
+From a GitHub install, run magpie's own copy instead. magpie keeps its files
+under `$XDG_CONFIG_HOME/magpie` when that is set (the installed default is
+`~/.config/magpie`), so resolve the folder rather than hardcoding one:
+
+```bash
+node "${XDG_CONFIG_HOME:-$HOME/.config}/magpie/plugins/node_modules/magpie-plugin-msmoli/bin/sync.mjs"
+```
+
 From a clone, run `./bin/sync.mjs` (or `node bin/sync.mjs` on Windows and
 WSL). npm 12 blocks `npx github:…` by default, so don't start from that.
 
@@ -221,19 +227,19 @@ budgets this document describes.
 If you are on **0.2.0**, that version ships an older `bin/sync.mjs` with both
 directions, but it keeps the international site in a second provider and
 predates this round of fixes. Upgrade (`npm i -g magpie-plugin-msmoli@latest`
-or `magpie plugin update msmoli`) to get what this document describes.
+or `magpie plugin update`) to get what this document describes.
 
 It syncs the **domestic site only**: the built-in preset it reads is the
 `modelscope.cn` one. Sign an international account in by hand.
 
 | Flag | What it does |
 |---|---|
-| `--status` | Report both sides and the plan; write nothing |
+| `--status` | Report both sides and the plan; write nothing. Exit code 0 when there is nothing to do, 1 when the plan would run (or is refused) |
 | `--to-plugin` | Log the preset's key into the plugin |
 | `--to-preset` | The other way round; a preset that already holds a different key needs `--force` |
 | `--force` | Replace a single existing plugin account whose key differs |
 | `--from <id>` | Pick the preset when more than one provider could be it |
-| `--dry-run` | Print the commands, masked, without running them or writing anything; no magpie binary needed |
+| `--dry-run` | Print the commands, masked, without running them or writing anything; no magpie binary needed. Exits 0 whether or not there is work — the verdict belongs to `--status`, which exits 1 when there is something to run. A plan it refuses (a mismatched key, a different `--dir`) still exits 1: the refusal is the answer |
 | `--dir <folder>` | Where magpie's config is (a portable install's `data` folder) |
 | `--magpie <path>` | Path to the magpie binary; a bare `magpie` is refused |
 | `--version` | Print the version (read from the package's own `package.json`) |
@@ -392,7 +398,7 @@ flowchart LR
 
 | Outcome | Meaning |
 |---|---|
-| `done` | already claimed today, with the day's total |
+| `done` | already claimed today, with the day's total (plus anything the touch itself granted) |
 | `claimed` | this run claimed it, with the amount; a row that was there before the touch is never counted as this run's |
 | `inactive` | the sign-in went through but nothing was granted (from noon on, checked once more 30 minutes later before it stands for the day) |
 | `failed` | nothing was claimed, including "not yet time" (see below) |
@@ -460,6 +466,7 @@ to show), so changes apply without restarting magpie.
 | Value | Effect |
 |---|---|
 | `["08:30", "10:00"]` or `"08:30-10:00"` | claim inside that window |
+| `["09:00"]` or `"09:00"` | claim at 09:00 (the host's ask lands at that minute or the next one) |
 | `false`, `"off"`, `"no"` | no window; claim whenever magpie asks |
 | an unusable value (end before start, not a clock time) | falls back to the default |
 | an end past **23:00** | capped at 23:00; a window entirely past it falls back to the default |
@@ -575,13 +582,17 @@ mask it is.
 Text from the server that carries a key cut by whitespace is masked the same
 way as the CLI's (`ghp_ 1234 AbCd …`, `sk-a nt-a pi03 …`), via the same
 reading: a run of words that joins back into a key. The cut it reads across
-is a space, a no-break or ideographic space, a line break, or a middot or a
-bullet (one or two in a row, at most one space either side) — a value copied
-out of a web page or a Chinese IME carries these as often as plain spaces. A
-middot is read across when a piece beside it is not a word (`A·K·I·A·…`,
-`9f8e·7d6c·…`, the pieces of a key cut in fours), and a run of single-character
-pieces is read whatever the separator (`A· K· I· A· …`). The card's own middot
-sits between words on both sides ("Qwen3-Max · 调用返还") and stays as written;
+is a space, a no-break or ideographic space, a line break, a middot or a
+bullet (one or two in a row, at most one space either side), or one of the
+marks a display cuts a key's cells with — a comma, an ideographic comma, a
+full-width stop, colon, comma or semicolon, a bar, a semicolon or a dash —
+and the same holds for cells separated by a tab, four spaces or a spaced bar.
+A value copied out of a web page or a Chinese IME carries these as often as
+plain spaces. A middot is read across when a piece beside it is not a word
+(`A·K·I·A·…`, `9f8e·7d6c·…`, the pieces of a key cut in fours), and a run of
+single-character pieces is read whatever the separator (`A· K· I· A· …`, `x=m
+s - LmNo 2468 …`). The card's own middot sits between words on both sides
+("Qwen3-Max · 调用返还") and stays as written;
 a middot inside a key stays in its mask when the mask shows only its ends,
 because the mask keeps everything between the first four characters and the
 last four. A full-width hyphen
@@ -592,7 +603,9 @@ The run readings give up on a body past 32 KiB and only the per-word pass
 runs: a body of thousands of one-word pieces ("s k - a n t" repeated) costs
 two orders of magnitude more reading than any message this pass exists for,
 and a key stored inside such a body as whole words is still masked. The
-bound exists so a hostile server's error cannot eat a hook's budget.
+bound exists so a hostile server's error cannot eat a hook's budget. A key
+cut by a space or a line break is still joined up to that bound, on the card
+and in the CLI alike.
 
 A piece is masked only when it carries ten characters of the key's own —
 **letters and digits, not the hyphens or spaces the token was written in**. A
@@ -627,8 +640,9 @@ The terms and risks are in
 
 - **Requests per day.** A check-in is three requests (ledger, touch, ledger);
   a day already claimed answers `done` in one ledger read when the nickname
-  is known, two otherwise; a ledger that hasn't caught up takes
-  four. A run longer than one ledger page adds one read per page walked back,
+  is known, two otherwise (the second is the ledger after the touch — a grant
+  can land with it even on a day already claimed); a ledger that hasn't caught
+  up takes four. A run longer than one ledger page adds one read per page walked back,
   up to seven — only while the streak is still going at the oldest row. A day
   whose own rows fill a page (a busy account) reads the next page too, up to
   four more, for both the check-in and the card. Asks before the window send
@@ -657,13 +671,20 @@ The terms and risks are in
   shape; a proxy's 403 page is reported as an ordinary refusal. A sign-in
   that was refused after the day's credits landed reports the expiry but
   keeps the day's answer.
-- **A body it doesn't understand fails; it never reads as zero.** A missing
-  `data`, a list where an object belongs, a missing or non-numeric
-  `available_balance`: each is a failure with its reason, because
-  "0 魔粒可用" would be a definite and false answer. Server text (a message, a
-  grant's title) has any key in it masked before it reaches the card or the log.
-- `MAGPIE_MSMOLI_CONFIG` overrides the config file's path. It exists for the
-  test suite, and works in production too.
+- **A body it doesn't understand is not read as zero.** A missing `data`, a
+  list where an object belongs, a missing or non-numeric `available_balance`:
+  a balance like that is a failure with its reason, because "0 魔粒可用"
+  would be a definite and false answer. A *ledger* that fails is the day
+  line's problem, not the card's: the balance was read before it and stays on
+  the card, the line carries the failure's own words
+  (`账单查询失败：… · 余额 100`), today's numbers are "not said" (no window
+  percentage) rather than 0, and the next poll reads the ledger again. A 401
+  is the sign-in's, and still answers expired. Server text (a message, a
+  grant's title) has any key in it masked before it reaches the card or the
+  log.
+- `MAGPIE_MSMOLI_CONFIG` overrides the config file's path. An absolute path
+  only: a relative one would be resolved against whatever folder magpie was
+  started in, so it is ignored.
 - The other 170 credits a day (liking items, posting AIGC works and models) have
   no API and would mean driving the web UI. This plugin doesn't touch them.
 
@@ -673,11 +694,12 @@ The terms and risks are in
 |---|---|
 | `没有登录信息，请先登录` | `printf 'ms-token\n' \| magpie plugin login msmoli` |
 | No credit window on the card, or no check-in | Restart magpie; the plugin host caches. |
-| `failed` with HTTP 401 | The token was revoked, or belongs to the other site; `modelscope.cn` and `modelscope.ai` don't share tokens. The message names the site that refused (国内站 / 国际站), or 任一站点 when both did. Make a new token there and sign in again. |
-| `failed` with HTTP 403 | ModelScope's risk control refused the request; the token is fine. A check-in is asked again in 30 minutes; a usage read shows the 403 on the card until the next poll. |
+| `failed` with HTTP 401 | The token was revoked, or belongs to the other site; `modelscope.cn` and `modelscope.ai` don't share tokens. When both sites refused the token in ModelScope's own words, the message names them (任一站点) and magpie signs the account out; when only a proxy or gateway answered 401, the message says 响应不是魔搭的 instead and the sign-in is left alone. When the key is spelled like a URL or a path, the message says so first — check the field, not the sign-in. Make a new token there and sign in again. |
+| `failed` with HTTP 403, message says 被魔搭风控拒绝 | ModelScope's risk control refused the request; the token is fine. A check-in is asked again in 30 minutes; a usage read shows the 403 on the card until the next poll. |
+| `failed` with HTTP 403, message says 响应不是魔搭的 | The 403 is not ModelScope's — a proxy, a gateway or a captive portal answered in its own words. The token is not the problem: check the proxy/VPN the request goes through. |
 | Before the window: failed, with `09:56 后自动领取（北京时间，magpie 每半小时问一次，无需操作）` | Expected. See [When it claims](#when-it-claims-the-check-in-window). |
 | Check in now before the target minute answers failed with the same line | Expected. A manual press and the host's half-hourly ask reach the plugin the same way, so only the target minute starts the claim. |
-| Always `inactive` | The sign-in works but today's ledger shows nothing: the account may not be eligible, or the grant hasn't been written yet. Before noon magpie re-asks every 30 minutes; from noon the plugin checks once more ("半小时后再核对一次"), and only the second `inactive` stands. |
+| Always `inactive` | The sign-in works but today's ledger shows nothing: the account may not be eligible, or the grant hasn't been written yet. Before noon magpie re-asks every 30 minutes; from noon the plugin checks once more ("半小时后再核对一次"), and only the second `inactive` stands — that one deferral is kept in memory, so a restarted magpie can offer it once more the same afternoon. |
 | Chat through the `modelscope` preset answers `429 insufficient balance` | The day's 250 credits are spent (~125 flagship calls). Not this plugin: it registers no models. See the tip under [Why its own provider](#why-its-own-provider-with-no-models). |
 | Two accounts with the same nickname, and only one checks in | magpie before 2026-10-20 kept check-ins per display name. Update magpie (fixed in magpie-community/plugins#254). |
 | Edits to a clone do nothing | Path plugins are referenced in place; restart magpie. |

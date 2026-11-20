@@ -5,13 +5,13 @@
 安装一次插件，再登录要用的渠道：
 
 ```bash
-magpie plugin add github:double2tea/magpie-image-models
+magpie plugin add github:double2tea/magpie-image-models#v0.4.1
 magpie plugin login image-models/rightimage
 magpie plugin login image-models/twelveai
 magpie plugin login image-models/wavespeed
 ```
 
-发布版本固定在 `v0.4.0`。登录时 Magpie 只询问该渠道的 API Key，并沿用
+发布版本固定在 `v0.4.1`。登录时 Magpie 只询问该渠道的 API Key，并沿用
 Magpie 自己的凭据存储。插件不读取环境变量、Keychain、私有配置文件或本机
 路径。只使用一个渠道时，只登录该渠道。
 
@@ -51,9 +51,17 @@ magpie tool generate_image \
 
 magpie tool generate_image \
   --model image-models/wavespeed/bytedance/seedream-v5.5 \
-  --size 2048x1152 --reference_images /absolute/reference.png \
+  --size 16:9@2K --reference_images /absolute/reference.png \
   "edit prompt"
 ```
+
+WaveSpeed 的 `size` 可写 `16:9`、`2K`、`16:9@2K` 或 `2048x1152`。
+插件将比例与分辨率分别传给渠道；像素值转换成比例与档位，不保证精确输出像素。
+不传其中一项时由渠道决定，不自动补 1K。支持的比例和档位取决于模型及编辑入口；
+不支持的组合在提交前报错。WaveSpeed 通过本插件每次只接受一张，`n > 1` 报错。
+三个渠道的 `complexity` 尚未确认有效，传入时明确报错。
+GPT 的像素尺寸统一写为 `WIDTHxHEIGHT`；输入中的 `×` 和空格会规范化。
+编辑入口必须带参考图。Right Code Gemini 每次只接受一张输出，`n > 1` 明确报错。
 
 ## 结构
 
@@ -72,6 +80,29 @@ magpie tool generate_image \
 4. 声明三项渠道函数：提交、查询、结果提取。
 
 不替换已有 `rightimage`、`generation-service` 或 Magpie 默认图片路由。
+
+Right Code 来源支持标准图片生成／编辑和 Gemini 原生接口，异步任务完成后统一返回图片。
+JSON 与 multipart 参考图均由来源插件转换；Design 无需了解供应商协议。
+目录内未知的参考图数量以 `null` 表示，不把“四张测试通过”写成供应商上限。
+
+可在 Magpie 插件选项中通过 `models` 补充新模型或修正已核实的能力；`mode`
+明确选择 `gemini` 或 `openai`，不通过模型名猜测协议。示例中的模型与数量仅作格式说明：
+
+```json
+{
+  "baseURL": "https://your-provider.example/v1",
+  "models": {
+    "new-image-model": {
+      "name": "New Image Model",
+      "mode": "openai",
+      "capabilities": { "generate": true, "edit": true, "maxReferences": 6 }
+    }
+  }
+}
+```
+
+能力声明进入共享供应商配置，Design 桥接插件可自动读取参考图数量。
+新接口协议仍须由来源插件实现；仅添加模型名不能证明接口兼容。
 一个渠道的凭据或故障不会影响其他渠道。
 
 从早期三个独立插件迁移时，重新安装本包并登录新 provider 即可：

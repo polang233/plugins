@@ -34,7 +34,7 @@ magpie plugin login volcengine-apigw
 会依次询问：
 
 1. **API Key** — 网关签发的个人推理 Key（UUID 形式 `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`）
-2. **网关基础地址** — 如 `https://xxxxxxxxxx.apigateway-cn-beijing.volceapi.com`（只填到域名即可；带不带 `/v1` 都会规范化）
+2. **网关基础地址** — 如 `https://xxxxxxxxxx.apigateway-cn-beijing.volceapi.com`（只填到域名即可；带不带 `/v1` 都会规范化）。留空则使用内置默认地址 `https://st8tp3ajl0df3n8b8l8qu.apigateway-cn-beijing.volceapi.com`。
 
 > 路径约定：推理请求发往 `<网关地址>/v1/chat/completions`。openai-compatible SDK 只会在 baseURL 后拼 `/chat/completions`，不会补 `/v1`；网关对裸 `/chat/completions` 一律返回 `404 model_not_found`，所以插件内部把 baseURL 固定成带 `/v1` 的形式。
 
@@ -50,22 +50,13 @@ magpie quota               # 今日 / 本月 token 用量
 
 之后 agent 可用 `volcengine-apigw/deepseek-v4-pro` 等模型 ID。
 
-## Anthropic 协议提供者
+## Claude Code
 
-插件同时导出 `volcengine-apigw-anthropic` 提供者，用于需要 Anthropic Messages 协议的场景。
+Claude Code 使用 Anthropic Messages 协议。把它的 base URL 指向 magpie 网关后，模型仍然选择 `volcengine-apigw/<model>`；magpie 会把 `/v1/messages` 请求转换成 OpenAI Chat Completions 发往网关，再把响应转换回 Anthropic 格式。
 
-```bash
-magpie plugin login volcengine-apigw-anthropic
-```
+插件只注册 `volcengine-apigw` 一个 OpenAI-compatible 提供者，协议转换由 magpie 网关负责。
 
-登录信息要求与 OpenAI 协议提供者完全相同：同一个网关、同一个 API Key、`gatewayBaseUrl` 也填同一个地址。
-
-差异：
-
-- 推理请求发往 `/v1/messages`（Anthropic Messages 格式），而不是 `/v1/chat/completions`
-- 底层 SDK 为 `@ai-sdk/anthropic`
-- 由于 magpie 按提供者隔离认证，必须分别登录 `volcengine-apigw` 和 `volcengine-apigw-anthropic`，各输入一次相同 Key 和网关地址
-- `auth.usage` 用量窗口在两个提供者上独立显示
+> **从 0.5.x 升级**：0.6.0 起不再注册 `volcengine-apigw-anthropic`。0.6.1 会在加载时自动清理残留的旧 provider 缓存和登录；如果之前登录过它，请把 Claude Code 的模型改为 `volcengine-apigw/<model>`。
 
 ## 支持的模型
 

@@ -55,7 +55,7 @@ and exported in manifests:
 
 | Parameter | Behavior |
 | --- | --- |
-| `accelerate_lora` | H3 default true, others false; true uses 4 steps |
+| `accelerate_lora` | Available only for MiniMax-H3; defaults true there and uses 4 steps. Other models reject `true`. |
 | `num_inference_steps` | 1–50, requires acceleration off unless set to 4 |
 | `guidance_scale` | 1.5–20; omitted uses the official model default if present |
 | `checkpoint_version_id` / `vae_version_id` | Compatible custom version IDs from model search |
@@ -272,9 +272,9 @@ By default, tasks submitted through the plugin are watched every 15 seconds whil
 
 Requests have no built-in style or negative-prompt defaults. The prompt is sent as provided; `style` and `negative_prompt` apply only when supplied on that request. `size` is optional and must preserve the frame aspect ratio; dimensions must be multiples of 16 and at most 1536 pixels. Without `size`, the service selects a supported size from the first frame. Duration is 1–10 whole seconds and defaults to 5.
 
-The service copies inputs and completed videos to its private local data directory: `~/Library/Application Support/magpie-wan` on macOS, `$XDG_DATA_HOME/magpie-wan` or `~/.local/share/magpie-wan` on Linux, and `%LOCALAPPDATA%\magpie-wan` on Windows. Service status responses use relative `output_path` and `content_url` values. When authentication is enabled, that HTTP content URL requires a Bearer header.
+The service stores its database, browser profiles, inputs and generated videos in `~/.magpie-modelscope-videogen` by default on every platform. Set `WAN_SERVICE_DATA_DIR` to use another location. Service status responses use relative `output_path` and `content_url` values. When authentication is enabled, that HTTP content URL requires a Bearer header.
 
-Call `videogen_get_video_result` to retrieve the file: the plugin supplies the token in a header, streams the video to `~/.magpie-wan/results/wan-*/video.mp4`, and returns an absolute `output_path` plus `file_url`. Set the plugin's `outputDir` option to change the local destination. This path is on the plugin host machine and can be opened by local agents; it is not a public download link. No token is included in a URL or tool response. Aborts, failed downloads and the 50-second retrieval timeout remove partial files; call the result tool again to retry. Completed copies remain until you delete them. First-to-last-frame input supports `wan2.1-flf2v-14b`, `minimax-h3` and `ltx-2.3`.
+Call `videogen_get_video_result` to retrieve the file: the plugin supplies the token in a header, streams the video to `~/.magpie-modelscope-videogen/results/wan-*/video.mp4`, and returns an absolute `output_path` plus `file_url`. Set the plugin's `outputDir` option to change the local destination. This path is on the plugin host machine and can be opened by local agents; it is not a public download link. No token is included in a URL or tool response. Aborts, failed downloads and the 50-second retrieval timeout remove partial files; call the result tool again to retry. Completed copies remain until you delete them. First-to-last-frame input supports `wan2.1-flf2v-14b`, `minimax-h3` and `ltx-2.3`.
 
 ### MiniMax-H3 through the headless browser
 
@@ -300,11 +300,10 @@ logins, routing preferences and wallet history; its display name is ModelScope V
 
 The adapter discovers `MINIMAX_H3` and its current checkpoint version from
 ModelScope's `defaultTemplateV2`; it does not pin a checkpoint ID. New H3 jobs default to `accelerate_lora: true` (4 steps), matching the web UI.
-Other models default to false, matching the current web UI, which only shows
-this switch for H3. Explicit acceleration is forwarded for every model; a quote
-alone does not prove that a model's accelerated generation works. Disable
-acceleration to use custom sampling steps. Old queued records without saved
-parameters retain acceleration off. Text-only generation is available through
+The web UI only exposes this switch for H3. The plugin advertises this capability
+on H3 and rejects `accelerate_lora: true` for every other model, including WAN.
+Custom sampling steps remain available when acceleration is off. Old queued
+records without saved parameters retain acceleration off. Text-only generation is available through
 `videogen_generate_t2v`; Omni Reference inputs are not exposed.
 
 Live official quotes verified on **2026-11-13** using a signed-in headless
@@ -370,9 +369,15 @@ success time is stored on each query; events record provider state changes and
 poll failures/recovery rather than every identical poll. `failure` includes stage,
 allowlisted error code/reason and HTTP status where supplied. Raw exceptions and
 entire provider responses are not persisted. No supplied reason means **服务端未提供原因**.
-`recovery.safe_to_resubmit` describes duplicate-generation safety, not the chance
-of visual success. Actual charges remain unknown unless the provider verifies
-one; `estimate` is only a quote.
+When an upstream failure clearly identifies a maximum-dimension restriction,
+`failure.constraint` reports `type: "max_dimension"` and includes a numeric
+`maximum` only when the provider's error text states one. This is evidence from
+that response, not a cached model-wide guarantee. `recovery.remote_task_created`
+and `recovery.charge_possible` are `true`, `false` or `null` when the outcome is
+unknown; `retry_guidance` indicates whether to reconcile, inspect an existing
+task, or safely resubmit. `safe_to_resubmit` describes duplicate-generation
+safety, not visual success or verified charges. Actual charges remain unknown
+unless the provider verifies one; `estimate` is only a quote.
 
 Use `videogen_control_job` with `action: "pause" | "resume" | "cancel" | "reassign"`
 and `job_id`; reassign also requires a connected destination `account`. Only
